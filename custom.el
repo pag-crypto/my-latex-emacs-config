@@ -7,7 +7,11 @@
  '(custom-safe-themes
    '("98fa2c2a5c9cc2e3fa435a42727f604b1dea5b4cad4aaef47942f2f9ee1e0a1b"
      default))
- '(package-selected-packages nil)
+ '(package-selected-packages
+   '(auctex-latexmk cape cdlatex citar claude-code-ide corfu eat
+		    embark-consult gptel magit marginalia orderless
+		    pdf-tools proof-general transient vertico
+		    yasnippet-snippets))
  '(package-vc-selected-packages
    '((claude-code-ide :url
 		      "https://github.com/manzaltu/claude-code-ide.el")

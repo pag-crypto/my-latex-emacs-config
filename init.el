@@ -3,6 +3,7 @@
 ;;; Package setup
 (require 'package)
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+(setq package-install-upgrade-built-in t)
 (package-initialize)
 
 (unless (package-installed-p 'use-package)
@@ -160,6 +161,97 @@
   :magic ("%PDF" . pdf-view-mode)
   :config
   (pdf-tools-install :no-query))
+
+;;; Touchscreen scrolling for pdf-view.
+;;
+;; Why we don't use Emacs's built-in touch-screen.el state machine:
+;;
+;; 1. pdf-tools tags touches over text regions with a `pdf-view-text-region'
+;;    area prefix (via an image-overlay default keymap with `[area t]'),
+;;    so the raw event becomes `[pdf-view-text-region touchscreen-begin]'.
+;; 2. pdf-tools' own wildcard handler (`pdf-util-image-map-mouse-event-proxy')
+;;    strips the prefix and unreads the event — but `unread-command-events'
+;;    bypasses `function-key-map' translation, which is where Emacs installs
+;;    the touch-screen state machine. So `touchscreen-scroll' events are
+;;    never synthesized in pdf-view buffers.
+;;
+;; Workaround: handle the raw begin/update/end events ourselves, bind both
+;; the bare and area-prefixed forms, track finger Y, and call pdf-view's
+;; own line/page scrollers directly.
+
+(defvar paul/pdf-view-touch-scroll-pixels-per-line 30
+  "Finger-travel pixels per line of pdf-view scrolling.")
+
+(defvar-local paul/pdf-view-touch-last-y nil
+  "Last finger Y position during an active pdf-view touch, or nil.")
+
+(defun paul/pdf-view-touch--y (event)
+  "Recursively locate the first (X . Y) cons in EVENT and return Y.
+Touchscreen event shapes vary by type and by translation path
+(touchscreen-begin/end carry a POSN at position 1; touchscreen-update
+carries a (POINT POSN APPROX) triple where POSN starts with a frame,
+not a window; the area-prefixed translated paths shift things further).
+Rather than enumerate every shape, walk the structure and grab the
+first (NUMBER . NUMBER) cons we see — that is the cursor (X . Y)."
+  (let ((stack (list event)))
+    (catch 'found
+      (while stack
+        (let ((item (pop stack)))
+          (cond
+           ((and (consp item)
+                 (numberp (car item))
+                 (numberp (cdr item)))
+            (throw 'found (cdr item)))
+           ((consp item)
+            (push (cdr item) stack)
+            (push (car item) stack)))))
+      nil)))
+
+(defun paul/pdf-view-touch-begin (event)
+  "Begin tracking a touch in pdf-view."
+  (interactive "e")
+  (setq paul/pdf-view-touch-last-y (paul/pdf-view-touch--y event)))
+
+(defun paul/pdf-view-touch-update (event)
+  "Scroll pdf-view in response to finger motion."
+  (interactive "e")
+  (let ((y (paul/pdf-view-touch--y event)))
+    (when (and paul/pdf-view-touch-last-y y)
+      (let* ((dy        (- y paul/pdf-view-touch-last-y))
+             (threshold paul/pdf-view-touch-scroll-pixels-per-line))
+        (when (>= (abs dy) threshold)
+          (let ((lines (/ (abs dy) threshold)))
+            ;; Finger moves down (dy > 0) → reveal earlier content (scroll back).
+            ;; Finger moves up   (dy < 0) → reveal later content   (scroll forward).
+            (if (> dy 0)
+                (pdf-view-previous-line-or-previous-page lines)
+              (pdf-view-next-line-or-next-page lines))
+            ;; Advance the anchor by the consumed delta; carry the remainder.
+            (setq paul/pdf-view-touch-last-y
+                  (+ paul/pdf-view-touch-last-y
+                     (* (if (> dy 0) 1 -1) lines threshold)))))))))
+
+(defun paul/pdf-view-touch-end (_event)
+  "End touch tracking in pdf-view."
+  (interactive "e")
+  (setq paul/pdf-view-touch-last-y nil))
+
+(defun paul/pdf-view-install-touch-bindings ()
+  "Install touchscreen bindings in the current PDF buffer's local map.
+Must run buffer-locally: pdf-tools installs its
+`[pdf-view-text-region t]' wildcard via `local-set-key', which
+ends up in a per-buffer keymap that shadows `pdf-view-mode-map'.
+We have to put our specific bindings into that same buffer-local
+map so they out-rank the wildcard for our three event symbols."
+  (dolist (binding '((touchscreen-begin  . paul/pdf-view-touch-begin)
+                     (touchscreen-update . paul/pdf-view-touch-update)
+                     (touchscreen-end    . paul/pdf-view-touch-end)))
+    (let ((ev (car binding))
+          (fn (cdr binding)))
+      (local-set-key (vector ev) fn)
+      (local-set-key (vector 'pdf-view-text-region ev) fn))))
+
+(add-hook 'pdf-view-mode-hook #'paul/pdf-view-install-touch-bindings)
 
 ;;; Continuous scroll for pdf-tools (via image-roll) — DISABLED.
 ;;;
@@ -331,8 +423,17 @@ Works whether the PDF is in a side window or a separate frame."
   :config
   (claude-code-ide-emacs-tools-setup))
 
+;;; `transient' must be loaded from MELPA *before* magit. Emacs ships a
+;;; built-in transient that is older than what magit requires; if it gets
+;;; loaded first (via autoloads or another package), magit's attempt to
+;;; redefine `transient--init-suffix-key' as a `cl-defgeneric' fails with
+;;; "already defined as something else than a generic function".
+(use-package transient
+  :ensure t)
+
 (use-package magit
-	     :ensure t)
+  :ensure t
+  :after transient)
 
 ;;; Proof General — Emacs interface for interactive proof assistants.
 ;;; Used here for EasyCrypt: opening a `.ec' file autoloads

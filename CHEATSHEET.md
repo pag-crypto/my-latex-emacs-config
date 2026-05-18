@@ -239,6 +239,7 @@ After first install: run `M-x pdf-tools-install` once (compiles the helper).
 | `M-x pdf-annot-add-text-annotation` | Sticky-note annotation at click point. |
 | `M-x pdf-annot-list-annotations` | Side buffer of every annotation in the doc. |
 | `M-x pdf-annot-delete` | Delete annotation at point.            |
+| swipe     | Touchscreen scroll (custom; tune via `paul/pdf-view-touch-scroll-pixels-per-line`). |
 
 Tip: in a PDF buffer, hit `C-h m` to see the full active keymap —
 pdf-tools binds many annotation commands under a prefix that varies
