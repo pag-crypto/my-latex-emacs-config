@@ -423,6 +423,45 @@ Works whether the PDF is in a side window or a separate frame."
   :config
   (claude-code-ide-emacs-tools-setup))
 
+;;; Soft-wrap LaTeX/TeX source buffers while a claude-code-ide window is
+;;; visible (its side pane narrows the source window and long lines run
+;;; off-screen), and unwrap when it goes away. Only buffers we toggled
+;;; ourselves get reverted, so a manually-enabled `visual-line-mode' is
+;;; left alone. claude-code-ide exposes no start/stop hook, so we watch
+;;; `window-configuration-change-hook' and only act on transitions.
+(defvar paul/--claude-wrap-toggled nil
+  "Buffers in which we enabled `visual-line-mode' for the Claude side window.")
+
+(defvar paul/--claude-window-prev-visible nil
+  "Previous visibility of any claude-code-ide window, for edge detection.")
+
+(defun paul/--claude-window-visible-p ()
+  (seq-some (lambda (w)
+              (string-prefix-p "*claude-code["
+                               (buffer-name (window-buffer w))))
+            (window-list nil 'no-mini)))
+
+(defun paul/--claude-wrap-target-p (buf)
+  (with-current-buffer buf
+    (derived-mode-p 'LaTeX-mode 'latex-mode 'tex-mode)))
+
+(defun paul/--claude-wrap-watch ()
+  (let ((now (paul/--claude-window-visible-p)))
+    (unless (eq (and now t) (and paul/--claude-window-prev-visible t))
+      (setq paul/--claude-window-prev-visible now)
+      (if now
+          (dolist (buf (buffer-list))
+            (when (and (paul/--claude-wrap-target-p buf)
+                       (not (buffer-local-value 'visual-line-mode buf)))
+              (with-current-buffer buf (visual-line-mode 1))
+              (push buf paul/--claude-wrap-toggled)))
+        (dolist (buf paul/--claude-wrap-toggled)
+          (when (buffer-live-p buf)
+            (with-current-buffer buf (visual-line-mode -1))))
+        (setq paul/--claude-wrap-toggled nil)))))
+
+(add-hook 'window-configuration-change-hook #'paul/--claude-wrap-watch)
+
 ;;; `transient' must be loaded from MELPA *before* magit. Emacs ships a
 ;;; built-in transient that is older than what magit requires; if it gets
 ;;; loaded first (via autoloads or another package), magit's attempt to
