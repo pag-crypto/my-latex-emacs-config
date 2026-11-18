@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: advC (math-aware)
+# key: advc
+# --
+`(if (texmathp) "" "$")`\advC`(if (texmathp) "" "$")`$0

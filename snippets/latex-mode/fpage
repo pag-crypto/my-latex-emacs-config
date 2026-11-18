@@ -1,0 +1,7 @@
+# -*- mode: snippet -*-
+# name: fpage (framed minipage for a game)
+# key: fpage
+# --
+\fpage{${1:0.45}}{
+$0
+}

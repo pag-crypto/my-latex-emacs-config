@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: advB (math-aware)
+# key: advb
+# --
+`(if (texmathp) "" "$")`\advB`(if (texmathp) "" "$")`$0

@@ -157,6 +157,10 @@ Customization:
 | `C-c ?`    | Full list of cdlatex environment abbrevs.            |
 
 Tip: hit `$` to toggle `$…$` around a region (or just around point).
+Typing `$` immediately before an existing `$` skips over it instead of
+inserting a new one (so closing inline math with `$`, or a muscle-memory
+double-`$`, won't leave a stray third dollar). Customized via
+`paul/cdlatex-dollar` in `init.el`.
 
 Customization:
 - `cdlatex-math-symbol-prefix` — character that triggers Greek/symbol
@@ -179,7 +183,7 @@ Eglot attaches automatically via the `LaTeX-mode` hook.
 
 | Keys          | What it does                                          |
 |---------------|-------------------------------------------------------|
-| `M-.`         | Jump to definition (labels, citations, commands).     |
+| `M-.`         | Jump to definition (labels, citations, commands; falls back to project grep / `texdef` for macros texlab misses). |
 | `M-,`         | Jump back.                                            |
 | `M-?`         | Find references.                                      |
 | `C-h .`       | Show documentation for symbol at point (eldoc).       |
@@ -241,6 +245,13 @@ After first install: run `M-x pdf-tools-install` once (compiles the helper).
 | `M-x pdf-annot-delete` | Delete annotation at point.            |
 | swipe     | Touchscreen scroll (custom; tune via `paul/pdf-view-touch-scroll-pixels-per-line`). |
 
+**Pan a wide or zoomed-in page left/right:** `→` / `←` nudge right / left
+by a column; `C-x <` / `C-x >` (same as `C-<next>` / `C-<prior>`) jump a
+full screen-width right / left; `Home` / `End` snap to the left / right
+edge. (These are the image-scroll commands, so they only do something
+when the page is wider than the window — after `+` zoom or on a landscape
+page.)
+
 Tip: in a PDF buffer, hit `C-h m` to see the full active keymap —
 pdf-tools binds many annotation commands under a prefix that varies
 by version. `C-.` (embark) on a region also offers PDF actions.
@@ -285,6 +296,47 @@ Customization (in `init.el`):
   popped-up frame open at a particular size, add e.g.
   `(pop-up-frame-parameters . ((width . 100) (height . 60)))` to the
   `'frame` branch.
+
+### Send a PDF to the reMarkable tablet
+
+Uploads the PDF in the current buffer to the reMarkable **cloud** via
+[`rmapi`](https://github.com/ddvk/rmapi); the tablet then syncs it down
+over wifi (no cable needed). Runs asynchronously, so Emacs doesn't block
+during the upload.
+
+| Keys      | What it does                                            |
+|-----------|---------------------------------------------------------|
+| `C-c r`   | (in a PDF buffer) Send the current PDF to the reMarkable cloud root. |
+| `C-u C-c r` | Same, but prompt for the document name and destination folder. |
+
+**Document naming.** rmapi has no rename-on-upload flag — the tablet
+document name is taken from the uploaded file's basename. Since every
+paper compiles to `main.pdf`, sending them raw would name every project's
+document "main" and they'd collide. So the command stages a temp copy
+named after the **project**: the direct child of `~/research`
+(`paul/remarkable-project-root`) that contains the PDF, regardless of
+depth — both `~/research/foo/main.pdf` and `~/research/foo/src/main.pdf`
+give document "foo". PDFs outside that root fall back to their enclosing
+directory's name. `C-u C-c r` lets you override the name per call.
+
+Notes:
+- **One-time setup:** run `rmapi` once in a shell and paste the code from
+  https://my.remarkable.com/device/desktop/connect. This writes
+  `~/.config/rmapi/rmapi.conf`; until it exists, `C-c r` fails with an
+  auth error (output lands in the `*rmapi*` buffer).
+- **Re-sending the same project** (same document name): controlled by
+  `paul/rmapi-upload-mode` in `init.el`. Default `"--content-only"`
+  replaces the existing document's PDF *in place*, keeping the document
+  and its annotations (and creates it on first send). Set to `"--force"`
+  to delete-and-recreate (loses annotations), or `nil` to error on a
+  name clash.
+- `rmapi put` won't create folders. Make one first with
+  `rmapi mkdir /Papers` in a shell, then target it with `C-u C-c r`.
+- The binary path is `paul/rmapi-program` in `init.el` (defaults to
+  `~/go/bin/rmapi`, since the emacs daemon's PATH doesn't include it).
+- On failure, the upload's stderr/stdout is shown in `*rmapi*`.
+- Useful shell verbs: `rmapi ls`, `rmapi get <doc>`, `rmapi mkdir`,
+  `rmapi stat <doc>`.
 
 ---
 
@@ -460,6 +512,22 @@ Snippets you author are saved under `~/.emacs.d.latex/snippets/<mode>/`
 (per major mode). Inside snippet files, `$1`, `$2`, … are tab stops;
 `${1:default}` gives a placeholder; `$0` is final cursor position.
 
+### Custom LaTeX snippets (in `snippets/latex-mode/`)
+
+| Trigger      | Expands to                                                  |
+|--------------|-------------------------------------------------------------|
+| `fpage<TAB>` | `\fpage{0.45}{ … }` — one framed minipage for a game.       |
+| `hfpages<TAB>` | `\hfpages{0.45}{ … }{ … }` — two framed pages side by side. |
+| `adva<TAB>`  | `\advA` (`\mathcal{A}`); wraps in `$…$` only outside math.  |
+| `advb<TAB>`  | `\advB` (`\mathcal{B}`); math-aware like `adva`.            |
+| `advc<TAB>`  | `\advC` (`\mathcal{C}`); math-aware like `adva`.            |
+
+The `adv*` snippets use `texmathp` so they add `$…$` in text but not when
+point is already in math. `\fpage`/`\hfpages` are the paper's own macros
+(`envirs.tex`), not cryptocode's `\pseudocode`. Two bundled snippets are
+deliberately disabled (key removed via same-uuid override): `b`→`\textbf{}`
+and `fr`→`frame`, the latter so cdlatex's `fr`→`\frac{}{}` works.
+
 Customization:
 - `yas-snippet-dirs` — list of dirs searched. Add a per-project dir
   (e.g. `~/research/snippets/`) for shared lab/project snippets.
@@ -494,6 +562,28 @@ patterns. Copy and tweak.
 | `C-h f`   | Describe function.                                  |
 | `C-h v`   | Describe variable.                                  |
 | `C-h m`   | Describe current major mode — lists its keys.       |
+
+### Resizing windows
+
+After a `C-x 2` / `C-x 3` split, these grow or shrink the **currently
+selected** window, taking the space from (or handing it to) its
+neighbor. Rule of thumb: side-by-side splits (`C-x 3`) want the width
+keys; stacked splits (`C-x 2`) want the height keys.
+
+| Keys        | What it does                                             |
+|-------------|---------------------------------------------------------|
+| `C-x }`     | Make it **wider** — `}` pushes the right edge out.       |
+| `C-x {`     | Make it **narrower** — `{` pulls it in.                  |
+| `C-x ^`     | Make it **taller** — `^` points up.                     |
+| `M-x shrink-window` | Make it **shorter** — no default key; or a negative prefix, `C-u -5 C-x ^`. |
+| `C-x -`     | Shrink the window to just fit its buffer's contents.    |
+| `C-x +`     | **Balance** — equalize every window's size (the "reset"). |
+
+- **Bigger steps:** a numeric prefix sets the amount — `C-u 10 C-x }`
+  widens by 10 columns, `C-u 5 C-x ^` heightens by 5 lines. Bare keys
+  nudge by 1.
+- **Mouse:** drag the **mode line** up/down to resize height; drag the
+  **vertical divider** between two side-by-side windows to resize width.
 
 ---
 
@@ -553,10 +643,28 @@ LaTeX-stack interactions.
 | `M-x claude-code-ide-send-region`  | Send the active region as a prompt.           |
 
 Requires the `claude` CLI on `PATH` (override with
-`claude-code-ide-cli-path`). The terminal backend is pinned to `eat`
-in `init.el` (pure elisp, no native build); flip
-`claude-code-ide-terminal-backend` to `'vterm` if you have vterm
-already compiled and want the speedup.
+`claude-code-ide-cli-path`). The terminal backend is `eat` with
+`claude-code-ide-no-flicker` set to `t` — that puts the Claude CLI in
+**fullscreen (alternate-screen) rendering**, which is what fixes the
+erratic scrolling and the on-resize gibberish, and is the mode where the
+mouse and scrolling actually work.
+
+**Scrolling the transcript (fullscreen mode):**
+
+| Keys / input        | What it does                                          |
+|---------------------|-------------------------------------------------------|
+| mouse wheel         | Scroll the conversation a few lines at a time.        |
+| `PgUp` / `PgDn`     | Scroll up / down by half a screen.                    |
+| `C-o`               | Toggle **transcript mode** — `less`-style navigation. |
+| in transcript: `j`/`k`, `g`/`G`, `C-u`/`C-d`, `/` then `n`/`N` | line / top-bottom / half-page / search. |
+| `Esc` or `q`        | Leave transcript mode.                                |
+
+The mouse wheel works because `eat` (unlike `vterm`) forwards mouse
+events to Claude. Tune wheel distance with the `CLAUDE_CODE_SCROLL_SPEED`
+env var (1–20). If `eat` ever garbles on a window resize, set
+`claude-code-ide-terminal-backend` to `'vterm` in `init.el` (rock-solid
+resize, but then scroll with the keyboard above — vterm won't forward the
+wheel; build deps for its C module: cmake + gcc + `libtool-bin`).
 
 ---
 
@@ -605,10 +713,58 @@ quits.
 
 ---
 
+## Daemon mode & launch-paper workflow
+
+The config runs inside a systemd-managed Emacs daemon. Client frames
+connect via `emacsclient` and open in milliseconds (cold-start ~2.5 s
+is paid once on login, not per file open).
+
+### Starting / stopping the daemon
+
+| Command                                          | What it does                            |
+|--------------------------------------------------|-----------------------------------------|
+| `systemctl --user start emacs-latex`             | Start (no-op if already running).       |
+| `systemctl --user restart emacs-latex`           | Kill + restart — required after substantive `init.el` changes. |
+| `systemctl --user stop emacs-latex`              | Stop (closes all client frames).        |
+| `systemctl --user status emacs-latex`            | Health, PID, last-start time.           |
+| `journalctl --user -u emacs-latex`               | Daemon logs (init errors, package failures). |
+| `emacsclient -s latex --eval '(emacs-version)'`  | Quick liveness probe from the shell.    |
+| `emacsclient -s latex -c [file]`                 | Open a new client frame, optionally visiting a file. |
+
+### Opening a paper
+
+`$mod+d` → "Launch paper..." in wofi → pick a paper from `~/research/`.
+The launcher spawns a tabbed sway workspace containing an Emacs client
+frame on `main.tex` plus an alacritty cd'd into the paper directory.
+The workspace gets the lowest free number in 1..10, so e.g. `$mod+2`
+flips you back to it.
+
+Re-running the launcher on an already-open paper switches to its
+existing workspace instead of spawning duplicates.
+
+### After editing init.el
+
+| Scope                                                  | How to apply                            |
+|--------------------------------------------------------|-----------------------------------------|
+| Small tweak (set a var, redefine a defun)              | `M-x eval-buffer` on init.el from a client frame. |
+| Anything touching `use-package` / hooks / frame setup  | `systemctl --user restart emacs-latex`. |
+| Want to debug an init error                            | `emacs --debug-init --init-directory=~/.emacs.d.latex` cold-runs synchronously. |
+
+If a CLI tool (texlab, latexmk, a new LSP server, etc.) isn't found
+even though `which X` works in the shell, it's almost certainly the
+daemon's PATH missing the install dir. Edit the `Environment=PATH=…`
+line in `~/.config/systemd/user/emacs-latex.service` and run
+`systemctl --user daemon-reload && systemctl --user restart emacs-latex`.
+
+---
+
 ## Config maintenance
 
-- Reload init after edits: `M-x eval-buffer` in `init.el`, or just restart.
+- Reload init after small edits: `M-x eval-buffer` in `init.el`. For
+  anything substantive, `systemctl --user restart emacs-latex` (see
+  daemon section above).
 - Upgrade packages: `M-x package-refresh-contents` then
-  `M-x package-upgrade-all` (Emacs 29+).
+  `M-x package-upgrade-all` (Emacs 29+). Restart the daemon afterward
+  to pick up macro-level changes in updated packages.
 - List installed: `M-x package-list-packages`.
 - Look at a variable's value: `C-h v NAME RET`.

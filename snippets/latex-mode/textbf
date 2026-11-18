@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: textbf
+# uuid: textbf
+# --
+\textbf{$1}$0

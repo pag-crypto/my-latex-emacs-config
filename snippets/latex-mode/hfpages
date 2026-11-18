@@ -1,0 +1,10 @@
+# -*- mode: snippet -*-
+# name: hfpages (two framed game pages side by side)
+# key: hfpages
+# --
+\hfpages{${1:0.45}}{
+$2
+}{
+$3
+}
+$0

@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: advA (math-aware)
+# key: adva
+# --
+`(if (texmathp) "" "$")`\advA`(if (texmathp) "" "$")`$0
