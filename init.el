@@ -64,10 +64,33 @@ directly at the end of this block."
 ;; already reverts PDF buffers; this just stops the y/n confirmation.
 (add-to-list 'revert-without-query "\\.pdf\\'")
 
-;; PDFs must NOT poll-revert: pdf-tools races latexmk mid-write
-;; ("PDF document is damaged"). AUCTeX's TeX-after-compilation-finished-functions
-;; hook reverts the PDF cleanly once latexmk has fully exited.
-(add-hook 'pdf-view-mode-hook (lambda () (auto-revert-mode -1)))
+;; PDFs must not revert mid-write: pdflatex truncates main.pdf and writes
+;; it progressively, and a revert in that window shows raw bytes /
+;; "PDF document is damaged". (`auto-revert-mode -1' does NOT help here —
+;; global-auto-revert-mode watches the file regardless.) Instead, treat
+;; the PDF as stale only once its tail holds the `%%EOF' trailer, which
+;; pdfTeX writes last. This works wherever latexmk runs (C-c C-c, a
+;; terminal, Claude); the final write fires another file-notify event,
+;; so the complete file still reverts promptly.
+(defun paul/--pdf-complete-p (file)
+  "Non-nil if FILE ends with a PDF `%%EOF' trailer (i.e. is fully written)."
+  (with-temp-buffer
+    (set-buffer-multibyte nil)
+    (let ((size (file-attribute-size (file-attributes file))))
+      (and size (> size 0)
+           (ignore-errors
+             (insert-file-contents-literally
+              file nil (max 0 (- size 1024)) size)
+             (search-forward "%%EOF" nil t))))))
+
+(defun paul/--pdf-stale-p (&optional noconfirm)
+  "`buffer-stale-function' for PDFs: stale only once fully written."
+  (and buffer-file-name
+       (paul/--pdf-complete-p buffer-file-name)
+       (buffer-stale--default-function noconfirm)))
+
+(add-hook 'pdf-view-mode-hook
+          (lambda () (setq-local buffer-stale-function #'paul/--pdf-stale-p)))
 
 ;;; which-key — pop up available keybinding continuations after a prefix.
 ;;; Massively helps with AUCTeX's many C-c C-* chords.
@@ -456,7 +479,11 @@ first (NUMBER . NUMBER) cons we see — that is the cursor (X . Y)."
   "Scroll pdf-view in response to finger motion."
   (interactive "e")
   (let ((y (paul/pdf-view-touch--y event)))
-    (when (and paul/pdf-view-touch-last-y y)
+    (when (and paul/pdf-view-touch-last-y y pdf-view-roll-minor-mode)
+      ;; Continuous mode scrolls by pixels: follow the finger exactly.
+      (pdf-roll-scroll-forward (- paul/pdf-view-touch-last-y y) nil t)
+      (setq paul/pdf-view-touch-last-y y))
+    (when (and paul/pdf-view-touch-last-y y (not pdf-view-roll-minor-mode))
       (let* ((dy        (- y paul/pdf-view-touch-last-y))
              (threshold paul/pdf-view-touch-scroll-pixels-per-line))
         (when (>= (abs dy) threshold)
@@ -493,38 +520,15 @@ map so they out-rank the wildcard for our three event symbols."
 
 (add-hook 'pdf-view-mode-hook #'paul/pdf-view-install-touch-bindings)
 
-;;; Continuous scroll for pdf-tools (via image-roll) — DISABLED.
-;;;
-;;; Kept as a reference in case a future image-roll release fixes the
-;;; issues below. Symptoms observed when this was active:
-;;;
-;;;   1. (wrong-type-argument overlayp nil)
-;;;      Fired from image-roll's pre-redisplay hook, often [N times] in
-;;;      a burst. Cause: image-roll's overlay slots are not always
-;;;      populated when pre-redisplay runs (e.g. just after a buffer
-;;;      revert or window-config change), and it dereferences nil.
-;;;
-;;;   2. epdfinfo: Error opening <main.pdf>: PDF document is damaged
-;;;      Fired from image-roll's pre-redisplay path during latexmk
-;;;      recompilation. Cause: image-roll re-reads pages aggressively
-;;;      on every redisplay; combined with global-auto-revert polling,
-;;;      it caught main.pdf mid-write and poppler choked on the
-;;;      truncated file.
-;;;
-;;; Mitigations attempted: (a) disabled auto-revert in pdf-view-mode
-;;; buffers and rely on TeX-after-compilation-finished-functions
-;;; (which still helps generally; that fix is kept above). Even with
-;;; (a), image-roll's pre-redisplay still raced and produced (1).
-;;; Removed the package outright as the cure.
-;;;
-;;; If re-enabling: check upstream activity at
-;;; https://github.com/dalanicolai/image-roll.el first, and verify
-;;; pre-redisplay no longer dereferences a nil overlay.
-;;
-;; (use-package image-roll
-;;   :vc (:url "https://github.com/dalanicolai/image-roll.el")
-;;   :after pdf-tools
-;;   :hook (pdf-view-mode . pdf-view-roll-minor-mode))
+;;; Continuous scroll via pdf-tools' own `pdf-view-roll-minor-mode'
+;;; (pdf-roll.el, shipped with pdf-tools; marked experimental). This is
+;;; NOT the old external image-roll package, which was removed after
+;;; `(wrong-type-argument overlayp nil)' bursts from its pre-redisplay
+;;; hook and "PDF document is damaged" errors. The latter were really
+;;; mid-write auto-reverts, now prevented by `paul/--pdf-stale-p'.
+;;; Measured ~18 ms per 3-line scroll step on the Reform.
+;;; `M-x pdf-view-roll-minor-mode' toggles it per buffer.
+(add-hook 'pdf-view-mode-hook #'pdf-view-roll-minor-mode)
 
 ;; Wire AUCTeX to pdf-tools regardless of load order. These forms reference
 ;; pdf-tools functions but don't need pdf-tools loaded at the time they run —

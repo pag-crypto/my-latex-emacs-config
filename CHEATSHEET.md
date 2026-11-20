@@ -218,11 +218,18 @@ Customization:
 
 After first install: run `M-x pdf-tools-install` once (compiles the helper).
 
+PDFs open in **continuous scroll** (`pdf-view-roll-minor-mode`, "Continuous"
+in the mode line): pages flow into each other, wheel/`SPC`/`C-n`/`C-p` scroll
+smoothly across page boundaries. `M-x pdf-view-roll-minor-mode` toggles back
+to page-at-a-time for the current buffer.
+
 ### In a PDF buffer
 | Keys      | What it does                                |
 |-----------|---------------------------------------------|
 | `n` / `p` | Next / previous page.                       |
 | `SPC` / `S-SPC` | Scroll down / up.                     |
+| `C-n` / `C-p` | Scroll a line down / up (smooth in continuous mode). |
+| `S-<next>` / `S-<prior>` | Scroll a screenful (continuous mode). |
 | `<right>` / `<left>` | Nudge the page right / left (a column at a time; same as `C-f` / `C-b`). |
 | `C-x <` / `C-x >` | Jump a full page-width right / left (same as `C-<next>` / `C-<prior>`). |
 | `<home>` / `<end>` | Snap to the page's left / right edge. |
@@ -234,7 +241,7 @@ After first install: run `M-x pdf-tools-install` once (compiles the helper).
 | `s r`     | Reset slicing.                              |
 | `I`       | Toggle midnight/dark mode.                  |
 | `o`       | Outline (document TOC) side pane.           |
-| `r`       | Revert/reload (rarely needed — we auto-revert on compile). |
+| `r`       | Revert/reload (rarely needed — auto-reverts once the new PDF is fully written). |
 | `q`       | Quit window.                                |
 | `C-s`     | Incremental search through PDF text (pdf-isearch). |
 | `M-x pdf-occur` | Search PDF text, results in a side buffer (RET to jump). |
@@ -243,7 +250,7 @@ After first install: run `M-x pdf-tools-install` once (compiles the helper).
 | `M-x pdf-annot-add-text-annotation` | Sticky-note annotation at click point. |
 | `M-x pdf-annot-list-annotations` | Side buffer of every annotation in the doc. |
 | `M-x pdf-annot-delete` | Delete annotation at point.            |
-| swipe     | Touchscreen scroll (custom; tune via `paul/pdf-view-touch-scroll-pixels-per-line`). |
+| swipe     | Touchscreen scroll (custom). Pixel-exact in continuous mode; in page mode, tune via `paul/pdf-view-touch-scroll-pixels-per-line`. |
 
 **Pan a wide or zoomed-in page left/right:** `→` / `←` nudge right / left
 by a column; `C-x <` / `C-x >` (same as `C-<next>` / `C-<prior>`) jump a
@@ -266,7 +273,8 @@ by version. `C-.` (embark) on a region also offers PDF actions.
 - `pdf-view-display-size` — `'fit-page`, `'fit-width`, `'fit-height`,
   or a number. The default after open.
 - `pdf-view-resize-factor` — multiplier per `+`/`-` keypress (default 1.25).
-- `pdf-view-use-scaling` — `t` for retina/HiDPI sharper rendering.
+- `pdf-view-use-scaling` — kept `nil` here (scale factor is 1; `t` made
+  scrolling slow via stale oversized renders). Only for HiDPI displays.
 - `pdf-view-midnight-colors` — `(fg . bg)` cons used by `I` toggle.
 - `pdf-annot-default-annotation-properties` — defaults for new
   highlights (color, opacity, label).
